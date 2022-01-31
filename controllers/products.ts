@@ -1,104 +1,151 @@
 // deno-lint-ignore-file no-explicit-any
-import {Product} from '../typesinterface.ts';
+import { Product } from "../typesinterface.ts";
+import db from "../mongodb.ts";
+import { Bson } from "https://deno.land/x/mongo/mod.ts";
 
-let products: Product[]=[
+const productCollection = db.collection<Product>("products");
+
+let products: Product[] = [
     {
-        id:"1",
-        name:"kawa",
-        description:"zbożowa",
-        price:9.99
+        name: "kawa",
+        description: "zbożowa",
+        price: 9.99,
     },
     {
-        id:"2",
-        name:"papierowsy",
-        description:"bez filtra",
-        price:19.99
-    },{
-        id:"3",
-        name:"alkohol",
-        description:"tania wódka",
-        price:29.99
-    }
+        name: "papierowsy",
+        description: "bez filtra",
+        price: 19.99,
+    },
+    {
+        name: "alkohol",
+        description: "tania wódka",
+        price: 29.99,
+    },
 ];
 
 //@ GET /api/products
 
-export const getProducts=({response}:{response:any})=>{
-    response.body={
-        success:true,
-        data:products
-    }
-}
+export const getProducts = async ({ response }: { response: any }) => {
+    const p: Product[] = await productCollection.find({}).toArray();
+    response.body = {
+        success: true,
+        data: p,
+    };
+};
 //@ GET /api/product/:id
-export const getSingleProduct=({params,response}:{params:{id:string},response:any})=>{
-    const product:Product|undefined=products.find(p=>p.id===params.id);
-    if(product){
-        response.status=200;
-        response.body={
-            success:true,
-            data:product
-        }
-    }else{
-        response.status=404;
-        response.body={
-            success:false,
-            msg: 'No product found'
-        }
+export const getSingleProduct = async ({
+    params,
+    response,
+}: {
+    params: { id: string };
+    response: any;
+}) => {
+    const product = await productCollection.findOne({
+        _id: new Bson.ObjectId(params.id),
+    });
+    if (product) {
+        response.status = 200;
+        response.body = {
+            success: true,
+            data: product,
+        };
+    } else {
+        response.status = 404;
+        response.body = {
+            success: false,
+            msg: "No product found",
+        };
     }
-    
-}
+};
 
-//@ POST /api/product/
-export const addProduct=async ({request,response}:{request:any,response:any})=>{
+// @ POST /api/product/
+export const addProduct = async ({
+    request,
+    response,
+}: {
+    request: any;
+    response: any;
+}) => {
     const body = await request.body();
-    if(!request.hasBody){
-        response.status=400;
-        response.body={
-            succes:false,
-            msg: 'No data'
-        }
-
-    }else{
+    if (!request.hasBody) {
+        response.status = 400;
+        response.body = {
+            succes: false,
+            msg: "No data",
+        };
+    } else {
         const product: Product = await body.value;
-        product.id=globalThis.crypto.randomUUID();
-        products.push(product);
-        response.status=201
-        response.body={
-            succes:true,
-            data:product
-        }
-
+        productCollection.insertOne(product);
+        response.status = 201;
+        response.body = {
+            succes: true,
+            data: product,
+        };
     }
-}
+};
 
 //@ PATCH /api/product/:id
-export const updateProduct= async ({params,request,response}:{params:{id:string},request:any,response:any})=>{
-    const product:Product|undefined=products.find(p=>p.id===params.id);
-    if(product){
-        const body= await request.body();
-        const updateData:{name?:string;description?:string;price?:number}=await body.value;
-        products=products.map(p=>p.id===params.id?{...p,...updateData}:p);
-
-        response.status=200;
-        response.body={
-            succes:true,
-            data:products
+export const updateProduct = async ({
+    params,
+    request,
+    response,
+}: {
+    params: { id: string };
+    request: any;
+    response: any;
+}) => {
+    const body = await request.body();
+    if (!request.hasBody) {
+        response.status = 400;
+        response.body = {
+            succes: false,
+            msg: "No data",
+        };
+    } else {
+        const product: Product = await body.value;
+        console.log(product);
+        const updated = await productCollection.updateOne(
+            { _id: new Bson.ObjectId(params.id) },
+            {
+                $set: product,
+            }
+        );
+        if (!updated.matchedCount) {
+            response.status = 404;
+            response.body = {
+                succes: false,
+                msg: "Wrong Id",
+            };
+        } else {
+            response.status = 200;
+            response.body = {
+                succes: true,
+                data: await productCollection.findOne({
+                    _id: new Bson.ObjectId(params.id),
+                }),
+            };
         }
     }
-    else{
-        response.status=404;
-        response.body={
-            success:false,
-            msg: 'No product found'
-        }
-    }
-}
+};
 
 //@ DELETE /api/product/:id
-export const deleteProduct=({params,response}:{params:{id:string},response:any})=>{
-    products=products.filter(p=>p.id!==params.id)
-    response.body={
-        success:"true",
-        msg:"Product removed"
+export const deleteProduct = async ({
+    params,
+    response,
+}: {
+    params: { id: string };
+    response: any;
+}) => {
+    const deleted = await productCollection.deleteOne({
+        _id: new Bson.ObjectId(params.id),
+    });
+    if (!deleted) {
+        response.status = 404;
+        response.body = {
+            success: "false",
+            msg: "Not found",
+        };
+    } else {
+        response.status = 204;
     }
-}
+};
